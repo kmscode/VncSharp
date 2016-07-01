@@ -71,10 +71,10 @@ namespace VncSharp
         /// </summary>
         public event EventHandler   ClipboardChanged;
 
-		/// <summary>
-		/// Points to a Function capable of obtaining a user's password.  By default this means using the PasswordDialog.GetPassword() function; however, users of RemoteDesktop can replace this with any function they like, so long as it matches the delegate type.
-		/// </summary>
-		private AuthenticateDelegate GetPassword;
+        /// <summary>
+        /// Points to a Function capable of obtaining a user's password.  By default this means using the PasswordDialog.GetPassword() function; however, users of RemoteDesktop can replace this with any function they like, so long as it matches the delegate type.
+        /// </summary>
+        public AuthenticateDelegate GetPassword;
 		
 		Bitmap desktop;						     // Internal representation of remote image.
 		Image  designModeDesktop;			     // Used when painting control in VS.NET designer
@@ -118,10 +118,10 @@ namespace VncSharp
 		
 		[DefaultValue(5900)]
 		[Description("The port number used by the VNC Host (typically 5900)")]
-		/// <summary>
-		/// The port number used by the VNC Host (typically 5900).
-		/// </summary>
-		private int VncPort {
+        /// <summary>
+        /// The port number used by the VNC Host (typically 5900).
+        /// </summary>
+        public int VncPort {
 			get { 
 				return port; 
 			}
@@ -300,7 +300,7 @@ namespace VncSharp
         /// <exception cref="System.ArgumentNullException">Thrown if host is null.</exception>
         /// <exception cref="System.ArgumentOutOfRangeException">Thrown if display is negative.</exception>
         /// <exception cref="System.InvalidOperationException">Thrown if the RemoteDesktop control is already Connected.  See <see cref="VncSharp.RemoteDesktop.IsConnected" />.</exception>
-        private void Connect(string host, int display)
+        public void Connect(string host, int display)
         {
             Connect(host, display, false);
         }
@@ -314,7 +314,7 @@ namespace VncSharp
         /// <exception cref="System.ArgumentNullException">Thrown if host is null.</exception>
         /// <exception cref="System.ArgumentOutOfRangeException">Thrown if display is negative.</exception>
         /// <exception cref="System.InvalidOperationException">Thrown if the RemoteDesktop control is already Connected.  See <see cref="VncSharp.RemoteDesktop.IsConnected" />.</exception>
-        private void Connect(string host, int display, bool viewOnly)
+        public void Connect(string host, int display, bool viewOnly)
         {
             Connect(host, display, viewOnly, false);
         }
@@ -329,7 +329,7 @@ namespace VncSharp
         /// <exception cref="System.ArgumentNullException">Thrown if host is null.</exception>
         /// <exception cref="System.ArgumentOutOfRangeException">Thrown if display is negative.</exception>
         /// <exception cref="System.InvalidOperationException">Thrown if the RemoteDesktop control is already Connected.  See <see cref="VncSharp.RemoteDesktop.IsConnected" />.</exception>
-        private void Connect(string host, int display, bool viewOnly, bool scaled)
+        public void Connect(string host, int display, bool viewOnly, bool scaled)
         {
             // TODO: Should this be done asynchronously so as not to block the UI?  Since an event 
             // indicates the end of the connection, maybe that would be a better design.
@@ -390,6 +390,23 @@ namespace VncSharp
             vnc.SetInputMode(viewOnly);
         }
 
+        [DefaultValue(false)]
+        [Description("True if view-only mode is desired (no mouse/keyboard events will be sent)")]
+        /// <summary>
+        /// True if view-only mode is desired (no mouse/keyboard events will be sent).
+        /// </summary>
+        public bool ViewOnly
+        {
+            get
+            {
+                return vnc.IsViewOnly;
+            }
+            set
+            {
+                SetInputMode(value);
+            }
+        }
+        
         /// <summary>
         /// Set the remote desktop's scaling mode.
         /// </summary>
@@ -406,6 +423,23 @@ namespace VncSharp
             AutoScrollMinSize = desktopPolicy.AutoScrollMinSize;
 
             Invalidate();
+        }
+
+        [DefaultValue(false)]
+        [Description("Determines whether to use desktop scaling or leave it normal and clip")]
+        /// <summary>
+        /// Determines whether to use desktop scaling or leave it normal and clip.
+        /// </summary>
+        public bool Scaled
+        {
+            get
+            {
+                return desktopPolicy.GetType() == typeof(VncScaledDesktopPolicy);
+            }
+            set
+            {
+                SetScalingMode(value);
+            }
         }
 
 		/// <summary>
@@ -494,12 +528,12 @@ namespace VncSharp
 			}
 
 		}
-		
-		/// <summary>
-		/// Stops the remote host from sending further updates and disconnects.
-		/// </summary>
-		/// <exception cref="System.InvalidOperationException">Thrown if the RemoteDesktop control is not already in the Connected state. See <see cref="VncSharp.RemoteDesktop.IsConnected" />.</exception>
-		private void Disconnect()
+
+        /// <summary>
+        /// Stops the remote host from sending further updates and disconnects.
+        /// </summary>
+        /// <exception cref="System.InvalidOperationException">Thrown if the RemoteDesktop control is not already in the Connected state. See <see cref="VncSharp.RemoteDesktop.IsConnected" />.</exception>
+        public void Disconnect()
 		{
 			InsureConnection(true);
 			vnc.ConnectionLost -= VncClientConnectionLost;
