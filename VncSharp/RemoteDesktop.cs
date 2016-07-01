@@ -688,13 +688,7 @@ namespace VncSharp
 		// TODO: currently we don't handle the case of 3-button emulation with 2-buttons.
 		protected override void OnMouseMove(MouseEventArgs mea)
 		{
-			// Only bother if the control is connected.
-			if (IsConnected) {
-				// See if the mouse pointer is inside the area occupied by the desktop on screen.
-                Rectangle adjusted = desktopPolicy.GetMouseMoveRectangle();
-				if (adjusted.Contains(PointToClient(MousePosition)))
-					UpdateRemotePointer();
-			}
+			UpdateRemotePointer();
 			base.OnMouseMove(mea);
 		}
 
@@ -750,12 +744,10 @@ namespace VncSharp
 				if (MouseButtons == MouseButtons.Middle) mask += 2;
 				if (MouseButtons == MouseButtons.Right)  mask += 4;
 
-                Point adjusted = desktopPolicy.UpdateRemotePointer(current);
-                if (adjusted.X < 0 || adjusted.Y < 0)
-                    throw new Exception();
-
-				vnc.WritePointerEvent(mask, desktopPolicy.UpdateRemotePointer(current));
-			}
+                Rectangle adjusted = desktopPolicy.GetMouseMoveRectangle();
+                if (adjusted.Contains(current))
+                    vnc.WritePointerEvent(mask, desktopPolicy.UpdateRemotePointer(current));
+            }
 		}
 
 		// Handle Keyboard Events:		 -------------------------------------------
