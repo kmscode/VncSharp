@@ -15,14 +15,13 @@
 // along with this program; if not, write to the Free Software
 // Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-using System;
 using System.Diagnostics;
 using System.Drawing;
 
 namespace VncSharp
 {
 	/// <summary>
-	/// A view-only version of IVncInputPolicy.
+	/// An interaction enabled version of IVncInputPolicy.
 	/// </summary>
 	public sealed class VncDefaultInputPolicy : IVncInputPolicy
 	{

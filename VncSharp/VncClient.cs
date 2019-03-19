@@ -16,13 +16,15 @@
 // Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 using System;
-using System.Threading;
-using System.Drawing;
 using System.Diagnostics;
+using System.Drawing;
+using System.Media;
 using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
 using System.Windows.Forms;
-
-using VncSharp.Encodings;
+// ReSharper disable CompareOfFloatsByEqualityOperator
+// ReSharper disable ArrangeAccessorOwnerBody
 
 namespace VncSharp
 {
@@ -33,59 +35,63 @@ namespace VncSharp
 	
 	public class VncClient
 	{
-		RfbProtocol rfb;			// The protocol object handling all communication with server.
-		Framebuffer buffer;			// The geometry and properties of the remote framebuffer
-		byte securityType;			// The type of Security agreed upon by client/server
-		EncodedRectangleFactory factory;
-		Thread worker;				// To request and read in-coming updates from server
-		ManualResetEvent done;		// Used to tell the worker thread to die cleanly
-		IVncInputPolicy inputPolicy;// A mouse/keyboard input strategy
+		private RfbProtocol rfb;			// The protocol object handling all communication with server.
+		private byte securityType;			// The type of Security agreed upon by client/server
+		private EncodedRectangleFactory factory;
+		private Thread worker;				// To request and read in-coming updates from server
+		private ManualResetEvent done;		// Used to tell the worker thread to die cleanly
+		private IVncInputPolicy inputPolicy;// A mouse/keyboard input strategy
+		private bool viewOnlyMode = false;
 
 		/// <summary>
 		/// Raised when the connection to the remote host is lost.
 		/// </summary>
 		public event EventHandler ConnectionLost;
 
-        /// <summary>
-        /// Raised when the server caused the local clipboard to be filled.
-        /// </summary>
-        public event EventHandler ServerCutText;
-        	
-		public VncClient()
-		{
-		}
+		/// <summary>
+		/// Raised when the server caused the local clipboard to be filled.
+		/// </summary>
+		public event EventHandler ServerCutText;
 
 		/// <summary>
 		/// Gets the Framebuffer representing the remote server's desktop geometry.
 		/// </summary>
-		public Framebuffer Framebuffer {
-			get { 
-				return buffer; 
-			}
-		}
+		public Framebuffer Framebuffer { get; private set; }
 
-        /// <summary>
-        /// Gets the hostname of the remote desktop
-        /// </summary>
-        public string HostName {
-            get {
-                return buffer.DesktopName;
-            }
-        }
+		/// <summary>
+		/// Gets/Sets if full screen refresh is required (forced) from the connected server.
+		/// </summary>
+		public bool FullScreenRefresh { get; set; }
+
+		/// <summary>
+		/// Gets the hostname of the remote desktop
+		/// </summary>
+		public string HostName
+		{
+			get { return Framebuffer.DesktopName; }
+		}
 
 		/// <summary>
 		/// Returns True if the VncClient object is View-Only, meaning no mouse/keyboard events are being sent.
 		/// </summary>
-		public bool IsViewOnly {
-			get {
-				return inputPolicy != null && inputPolicy is VncViewInputPolicy;
-			}
-		}
+		public bool ViewOnly
+	    {
+	        get {	return viewOnlyMode;	}
+			set {	viewOnlyMode = value;
+					// Allocate the inputPolicy if there is a connection
+					if (rfb != null)
+					{	if (viewOnlyMode)
+							inputPolicy = new VncViewInputPolicy(rfb);
+						else
+							inputPolicy = new VncDefaultInputPolicy(rfb);
+					}
+				}
+	    }
 
-		// Just for API compat, since I've added viewOnly
+	    // Just for API compat, since I've added viewOnly
 		public bool Connect(string host, int display, int port)
 		{
-			return Connect(host, display, port, false);
+			return Connect(host, display, port, viewOnlyMode);
 		}
 
 		/// <summary>
@@ -98,16 +104,17 @@ namespace VncSharp
 		/// <returns>Returns True if the VNC Host requires a Password to be sent after Connect() is called, otherwise False.</returns>
 		public bool Connect(string host, int display, int port, bool viewOnly)
 		{
-			if (host == null) throw new ArgumentNullException("host");
+			if (host == null) throw new ArgumentNullException(nameof(host));
 
 			// If a diplay number is specified (used to connect to Unix servers)
 			// it must be 0 or greater.  This gets added to the default port number
 			// in order to determine where the server will be listening for connections.
-			if (display < 0) throw new ArgumentOutOfRangeException("display", display, "Display number must be non-negative.");
+			if (display < 0) throw new ArgumentOutOfRangeException(nameof(display), display, "Display number must be non-negative.");
 			port += display;
 			
 			rfb = new RfbProtocol();
 
+			viewOnlyMode = viewOnly;
 			if (viewOnly) {
 				inputPolicy = new VncViewInputPolicy(rfb);
 			} else {
@@ -131,37 +138,35 @@ namespace VncSharp
 				rfb.WriteProtocolVersion();
 
 				// Figure out which type of authentication the server uses
-				byte[] types = rfb.ReadSecurityTypes();
+				var types = rfb.ReadSecurityTypes();
 				
 				// Based on what the server sends back in the way of supported Security Types, one of
 				// two things will need to be done: either the server will reject the connection (i.e., type = 0),
 				// or a list of supported types will be sent, of which we need to choose and use one.
-				if (types.Length > 0) {
-					if (types[0] == 0) {
-						// The server is not able (or willing) to accept the connection.
-						// A message follows indicating why the connection was dropped.
-						throw new VncProtocolException("Connection Failed. The server rejected the connection for the following reason: " + rfb.ReadSecurityFailureReason());
-					} else {
-						securityType = GetSupportedSecurityType(types);
-						Debug.Assert(securityType > 0, "Unknown Security Type(s)", "The server sent one or more unknown Security Types.");
+			    if (types.Length <= 0)
+                    // Something is wrong, since we should have gotten at least 1 Security Type
+                    throw new VncProtocolException(
+			            "Protocol Error Connecting to Server. The Server didn't send any Security Types during the initial handshake.");
+			    if (types[0] == 0) {
+			        // The server is not able (or willing) to accept the connection.
+			        // A message follows indicating why the connection was dropped.
+			        throw new VncProtocolException("Connection Failed. The server rejected the connection for the following reason: " + rfb.ReadSecurityFailureReason());
+			    }
+			    securityType = GetSupportedSecurityType(types);
+				Debug.Assert(securityType > 0, "Unknown Security Type(s)", "The server sent one or more unknown Security Types.");
 						
-						rfb.WriteSecurityType(securityType);
+			    rfb.WriteSecurityType(securityType);
 						
-						// Protocol 3.8 states that a SecurityResult is still sent when using NONE (see 6.2.1)
-						if (rfb.ServerVersion == 3.8f && securityType == 1) {
-							if (rfb.ReadSecurityResult() > 0) {
-								// For some reason, the server is not accepting the connection.  Get the
-								// reason and throw an exception
-								throw new VncProtocolException("Unable to Connecto to the Server. The Server rejected the connection for the following reason: " + rfb.ReadSecurityFailureReason());
-							}
-						}
-						
-						return (securityType > 1) ? true : false;
-					}
-				} else {
-					// Something is wrong, since we should have gotten at least 1 Security Type
-					throw new VncProtocolException("Protocol Error Connecting to Server. The Server didn't send any Security Types during the initial handshake.");
-				}
+			    // Protocol 3.8 states that a SecurityResult is still sent when using NONE (see 6.2.1)
+			    if (rfb.ServerVersion != 3.8f || securityType != 1) return securityType > 1;
+			    if (rfb.ReadSecurityResult() > 0) {
+			        // For some reason, the server is not accepting the connection.  Get the
+			        // reason and throw an exception
+			        throw new VncProtocolException("Unable to Connecto to the Server. The Server rejected the connection for the following reason: " + rfb.ReadSecurityFailureReason());
+			    }
+
+			    return securityType > 1;
+			    
 			} catch (Exception e) {
 				throw new VncProtocolException("Unable to connect to the server. Error was: " + e.Message, e);
 			}			
@@ -193,11 +198,11 @@ namespace VncSharp
 		/// </summary>
 		/// <param name="types">An array of bytes representing the Security Types supported by the VNC Server.</param>
 		/// <returns>A byte that represents the Security Type to be used by the Client.</returns>
-		protected byte GetSupportedSecurityType(byte[] types)
+		private byte GetSupportedSecurityType(byte[] types)
 		{
 			// Pick the first match in the list of given types.  If you want to add support for new
 			// security types, do it here:
-			for (int i = 0; i < types.Length; ++i) {
+			for (var i = 0; i < types.Length; ++i) {
 				if (   types[i] == 1  	// None
 					|| types[i] == 2	// VNC Authentication
 // TODO: None of the following are currently supported -------------------
@@ -218,7 +223,7 @@ namespace VncSharp
 		/// <returns>Returns True if Authentication worked, otherwise False.</returns>
 		public bool Authenticate(string password)
 		{
-			if (password == null) throw new ArgumentNullException("password");
+			if (password == null) throw new ArgumentNullException(nameof(password));
 			
 			// If new Security Types are supported in future, add the code here.  For now, only 
 			// VNC Authentication is supported.
@@ -230,24 +235,23 @@ namespace VncSharp
 			
 			if (rfb.ReadSecurityResult() == 0) {
 				return true;
-			} else {
-				// Authentication failed, and if the server is using Protocol version 3.8, a 
-				// plain text message follows indicating why the error happend.  I'm not 
-				// currently using this message, but it is read here to clean out the stream.
-				// In earlier versions of the protocol, the server will just drop the connection.
-				if (rfb.ServerVersion == 3.8) rfb.ReadSecurityFailureReason();
-				rfb.Close();	// TODO: Is this the right place for this???
-				return false;
 			}
+		    // Authentication failed, and if the server is using Protocol version 3.8, a 
+		    // plain text message follows indicating why the error happend.  I'm not 
+		    // currently using this message, but it is read here to clean out the stream.
+		    // In earlier versions of the protocol, the server will just drop the connection.
+		    if (rfb.ServerVersion == 3.8) rfb.ReadSecurityFailureReason();
+		    rfb.Close();	// TODO: Is this the right place for this???
+		    return false;
 		}
 
 		/// <summary>
 		/// Performs VNC Authentication using VNC DES encryption.  See the RFB Protocol doc 6.2.2.
 		/// </summary>
 		/// <param name="password">A string containing the user's password in clear text format.</param>
-		protected void PerformVncAuthentication(string password)
+		private void PerformVncAuthentication(string password)
 		{
-			byte[] challenge = rfb.ReadSecurityChallenge();
+			var challenge = rfb.ReadSecurityChallenge();
 			rfb.WriteSecurityResponse(EncryptChallenge(password, challenge));
 		}
 
@@ -257,19 +261,15 @@ namespace VncSharp
 		/// <param name="password">The user's password.</param>
 		/// <param name="challenge">The challenge sent by the server.</param>
 		/// <returns>Returns the encrypted challenge.</returns>
-		protected byte[] EncryptChallenge(string password, byte[] challenge)
+		private byte[] EncryptChallenge(string password, byte[] challenge)
 		{
-			byte[] key = new byte[8];
+			var key = new byte[8];
 
 			// Key limited to 8 bytes max.
-			if (password.Length >= 8) {
-				System.Text.Encoding.ASCII.GetBytes(password, 0, 8, key, 0);
-			} else {
-				System.Text.Encoding.ASCII.GetBytes(password, 0, password.Length, key, 0);
-			}			
+		    Encoding.ASCII.GetBytes(password, 0, password.Length >= 8 ? 8 : password.Length, key, 0);
 
-			// VNC uses reverse byte order in key
-            for (int i = 0; i < 8; i++)
+		    // VNC uses reverse byte order in key
+            for (var i = 0; i < 8; i++)
                 key[i] = (byte)( ((key[i] & 0x01) << 7) |
                                  ((key[i] & 0x02) << 5) |
                                  ((key[i] & 0x04) << 3) |
@@ -278,15 +278,16 @@ namespace VncSharp
                                  ((key[i] & 0x20) >> 3) |
                                  ((key[i] & 0x40) >> 5) |
                                  ((key[i] & 0x80) >> 7)  );
- 
-			// VNC uses DES, not 3DES as written in some documentation
-			DES des = new DESCryptoServiceProvider();
-			des.Padding = PaddingMode.None;
-			des.Mode = CipherMode.ECB;
 
-			ICryptoTransform enc = des.CreateEncryptor(key, null); 
+            // VNC uses DES, not 3DES as written in some documentation
+            DES des = new DESCryptoServiceProvider()
+            {
+                Padding = PaddingMode.None,
+                Mode = CipherMode.ECB
+            };
+            var enc = des.CreateEncryptor(key, null); 
 
-			byte[] response = new byte[16];
+			var response = new byte[16];
 			enc.TransformBlock(challenge, 0, challenge.Length, response, 0);
 			
 			return response;
@@ -295,12 +296,11 @@ namespace VncSharp
 		/// <summary>
 		/// Finish setting-up protocol with VNC Host.  Should be called after Connect and Authenticate (if password required).
 		/// </summary>
-		public void Initialize()
+		public void Initialize(int bitsPerPixel, int depth)
 		{
 			// Finish initializing protocol with host
-			rfb.WriteClientInitialisation(false);
-			buffer = rfb.ReadServerInit();
-			rfb.WriteSetPixelFormat(buffer);	// just use the server's framebuffer format
+			rfb.WriteClientInitialisation(true);  // Allow the desktop to be shared
+			Framebuffer = rfb.ReadServerInit(bitsPerPixel, depth);
 
 			rfb.WriteSetEncodings(new uint[] {	RfbProtocol.ZRLE_ENCODING,
 			                                    RfbProtocol.HEXTILE_ENCODING, 
@@ -308,9 +308,11 @@ namespace VncSharp
 												RfbProtocol.RRE_ENCODING,
 												RfbProtocol.COPYRECT_ENCODING,
 												RfbProtocol.RAW_ENCODING });
-			
+
+			rfb.WriteSetPixelFormat(Framebuffer);	// set the required ramebuffer format
+            
 			// Create an EncodedRectangleFactory so that EncodedRectangles can be built according to set pixel layout
-			factory = new EncodedRectangleFactory(rfb, buffer);
+			factory = new EncodedRectangleFactory(rfb, Framebuffer);
 		}
 
 		/// <summary>
@@ -319,7 +321,7 @@ namespace VncSharp
 		public void StartUpdates()
 		{
 			// Start getting updates on background thread.
-			worker = new Thread(new ThreadStart(this.GetRfbUpdates));
+			worker = new Thread(GetRfbUpdates);
             // Bug Fix (Grégoire Pailler) for clipboard and threading
             worker.SetApartmentState(ApartmentState.STA);
             worker.IsBackground = true;
@@ -333,7 +335,8 @@ namespace VncSharp
 		public void Disconnect()
 		{
 			// Stop the worker thread.
-			done.Set();
+			if (done != null)
+				done.Set();
 
 			// BUG FIX: Simon.Phillips@warwick.ac.uk for UltraVNC disconnect issue
 			// Request a tiny screen update to flush the blocking read
@@ -343,8 +346,8 @@ namespace VncSharp
 				// this may not work, as Disconnect can get called in response to the
 				// VncClient raising a ConnectionLost event (e.g., the remote host died).
 			}
-
-			worker.Join(3000);	// this number is arbitrary, just so that it doesn't block forever....
+			if (worker != null)
+				worker.Join(3000);	// this number is arbitrary, just so that it doesn't block forever....
 
 			rfb.Close();	
 			rfb = null;
@@ -365,10 +368,8 @@ namespace VncSharp
 		/// </summary>
 		private void GetRfbUpdates()
 		{
-			int rectangles;
-			int enc;
-
 			// Get the initial destkop from the host
+			int connLostCount = 0;
 			RequestScreenUpdate(true);
 
 			while (true) {
@@ -376,43 +377,41 @@ namespace VncSharp
 					break;
 
                 try {
+                    // ReSharper disable once SwitchStatementMissingSomeCases
                     switch (rfb.ReadServerMessageType()) {
                         case RfbProtocol.FRAMEBUFFER_UPDATE:
-                            rectangles = rfb.ReadFramebufferUpdate();
+                            var rectangles = rfb.ReadFramebufferUpdate();
 
                             if (CheckIfThreadDone())
                                 break;
 
                             // TODO: consider gathering all update rectangles in a batch and *then* posting the event back to the main thread.
-                            for (int i = 0; i < rectangles; ++i) {
+                            for (var i = 0; i < rectangles; ++i) {
                                 // Get the update rectangle's info
-                                Rectangle rectangle;
-                                rfb.ReadFramebufferUpdateRectHeader(out rectangle, out enc);
+                                rfb.ReadFramebufferUpdateRectHeader(out Rectangle rectangle, out int enc);
 
                                 // Build a derived EncodedRectangle type and pull-down all the pixel info
-                                EncodedRectangle er = factory.Build(rectangle, enc);
+                                var er = factory.Build(rectangle, enc);
                                 er.Decode();
 
                                 // Let the UI know that an updated rectangle is available, but check
                                 // to see if the user closed things down first.
-                                if (!CheckIfThreadDone() && VncUpdate != null) {
-                                    VncEventArgs e = new VncEventArgs(er);
+                                if (CheckIfThreadDone() || VncUpdate == null) continue;
+                                var e = new VncEventArgs(er);
 
-                                    // In order to play nicely with WinForms controls, we do a check here to 
-                                    // see if it is necessary to synchronize this event with the UI thread.
-                                    if (VncUpdate.Target is System.Windows.Forms.Control) {
-                                        Control target = VncUpdate.Target as Control;
-                                        if (target != null)
-                                            target.Invoke(VncUpdate, new object[] { this, e });
-                                    } else {
-                                        // Target is not a WinForms control, so do it on this thread...
-                                        VncUpdate(this, new VncEventArgs(er));
-                                    }
+                                // In order to play nicely with WinForms controls, we do a check here to 
+                                // see if it is necessary to synchronize this event with the UI thread.
+                                var control = VncUpdate.Target as Control;
+                                if (control != null) {
+                                    control.Invoke(VncUpdate, this, e);
+                                } else {
+                                    // Target is not a WinForms control, so do it on this thread...
+                                    VncUpdate(this, new VncEventArgs(er));
                                 }
                             }
                             break;
                         case RfbProtocol.BELL:
-                            Beep(500, 300);  // TODO: are there better values than these?
+                            Beep();
                             break;
                         case RfbProtocol.SERVER_CUT_TEXT:
                             if (CheckIfThreadDone())
@@ -422,51 +421,60 @@ namespace VncSharp
                             OnServerCutText();
                             break;
                         case RfbProtocol.SET_COLOUR_MAP_ENTRIES:
-							rfb.ReadColourMapEntry();
+                            rfb.ReadColourMapEntry();
                             break;
                     }
-                } catch {
-                    OnConnectionLost();
+                    // Moved screen update request here to prevent it being called multiple times
+                    // This was the case when multiple rectangles were returned by the host
+                    RequestScreenUpdate(FullScreenRefresh);
+                    connLostCount = 0;
+                    
+                } catch
+                {   // On the first time of no data being received we force a complete update
+                    // This is for times when the server has no update, and caused the timeout.
+                    if (connLostCount++ > 1)
+                        OnConnectionLost();
+                    else
+                        RequestScreenUpdate(true);
                 }
-			}
-		}
+                FullScreenRefresh = false;
+            }
+        }
 
-		protected void OnConnectionLost()
+	    private void OnConnectionLost()
 		{
 			// In order to play nicely with WinForms controls, we do a check here to 
 			// see if it is necessary to synchronize this event with the UI thread.
-			if (ConnectionLost != null && 
-				ConnectionLost.Target is System.Windows.Forms.Control) {
-				Control target = ConnectionLost.Target as Control;
+		    if (!(ConnectionLost?.Target is Control)) return;
+		    var target = (Control) ConnectionLost.Target;
 
-				if (target != null)
-					target.Invoke(ConnectionLost, new object[] {this, EventArgs.Empty});
-				else
-					ConnectionLost(this, EventArgs.Empty);
-			}
+		    if (target != null)
+		        target.Invoke(ConnectionLost, this, EventArgs.Empty);
+		    else
+		        ConnectionLost(this, EventArgs.Empty);
 		}
 
-	    protected void OnServerCutText()
+	    private void OnServerCutText()
         {
             // In order to play nicely with WinForms controls, we do a check here to 
             // see if it is necessary to synchronize this event with the UI thread.
-            if (ServerCutText != null &&
-                ServerCutText.Target is System.Windows.Forms.Control) {
-                Control target = ServerCutText.Target as Control;
+            if (!(ServerCutText?.Target is Control)) return;
+            var target = (Control) ServerCutText.Target;
 
-                if (target != null)
-                    target.Invoke(ServerCutText, new object[] { this, EventArgs.Empty });
-                else
-                    ServerCutText(this, EventArgs.Empty);
-            }
+            if (target != null)
+                target.Invoke(ServerCutText, this, EventArgs.Empty);
+            else
+                ServerCutText(this, EventArgs.Empty);
         }
 
 // There is no managed way to get a system beep (until Framework v.2.0). So depending on the platform, something external has to be called.
 #if Win32
-		[System.Runtime.InteropServices.DllImport("kernel32.dll")]
-		private static extern bool Beep(int freq, int duration);
+	    private static void Beep()
+	    {
+            SystemSounds.Beep.Play();
+        }
 #else
-		private bool Beep(int freq, int duration)	// bool just so it matches the Win32 API signature
+		private void Beep()	// bool just so it matches the NativeMethods API signature
 		{
 			// TODO: How to do this under Unix?
 			System.Console.Write("Beep!");
@@ -474,19 +482,7 @@ namespace VncSharp
 		}
 #endif
 
-		/// <summary>
-		/// Changes the input mode to view-only or interactive.
-		/// </summary>
-		/// <param name="viewOnly">True if view-only mode is desired (no mouse/keyboard events will be sent).</param>
-		public void SetInputMode(bool viewOnly)
-		{
-			if (viewOnly)
-				inputPolicy = new VncViewInputPolicy(rfb);
-			else
-				inputPolicy = new VncDefaultInputPolicy(rfb);
-		}
-
-        public virtual void WriteClientCutText(string text)
+        public void WriteClientCutText(string text)
         {
             try {
                 rfb.WriteClientCutText(text);
@@ -496,7 +492,7 @@ namespace VncSharp
         }
 
 		// TODO: This needs to be pushed into the protocol rather than expecting keysym from the caller.
-		public virtual void WriteKeyboardEvent(uint keysym, bool pressed)
+		public void WriteKeyboardEvent(uint keysym, bool pressed)
 		{
 			try {
 				inputPolicy.WriteKeyboardEvent(keysym, pressed);
@@ -506,7 +502,7 @@ namespace VncSharp
 		}
 
 		// TODO: This needs to be pushed into the protocol rather than expecting the caller to create the mask.
-		public virtual void WritePointerEvent(byte buttonMask, Point point)
+		public void WritePointerEvent(byte buttonMask, Point point)
 		{
 			try {
 				inputPolicy.WritePointerEvent(buttonMask, point);
@@ -528,7 +524,7 @@ namespace VncSharp
 		public void RequestScreenUpdate(bool refreshFullScreen)
 		{
 			try {
-				rfb.WriteFramebufferUpdateRequest(0, 0, (ushort) buffer.Width, (ushort) buffer.Height, !refreshFullScreen);
+				rfb.WriteFramebufferUpdateRequest(0, 0, (ushort) Framebuffer.Width, (ushort) Framebuffer.Height, !refreshFullScreen);
 			} catch {
 				OnConnectionLost();
 			}

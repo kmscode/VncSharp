@@ -17,6 +17,7 @@
 
 using System;
 using System.Drawing;
+// ReSharper disable ArrangeAccessorOwnerBody
 
 namespace VncSharp
 {
@@ -25,38 +26,25 @@ namespace VncSharp
 	/// </summary>
 	public class Framebuffer
 	{
-		string name;
+	    private string name;
 
-		int	 bpp;
-		int	 depth;
-		bool bigEndian;
-		bool trueColour;
-		int	 redMax;
-		int	 greenMax;
-		int	 blueMax;
-		int	 redShift;
-		int	 greenShift;
-		int	 blueShift;
-
-		readonly int width;
-		readonly int height;
-		readonly int[] pixels;	 // I'm reusing the same pixel buffer for all update rectangles.
-								 // Pixel values will always be 32-bits to match GDI representation
-		readonly int pixelCount; // The total number of pixels (w x h) assigned in SetSize()
+	    private readonly int[] pixels;   // I'm reusing the same pixel buffer for all update rectangles.
+                                         // Pixel values will always be 32-bits to match GDI representation
 
 
-		/// <summary>
-		/// Creates a new Framebuffer with (width x height) pixels.
-		/// </summary>
-		/// <param name="width">The width in pixels of the remote desktop.</param>
-		/// <param name="height">The height in pixels of the remote desktop.</param>
-		public Framebuffer(int width, int height)
+        /// <summary>
+        /// Creates a new Framebuffer with (width x height) pixels.
+        /// </summary>
+        /// <param name="width">The width in pixels of the remote desktop.</param>
+        /// <param name="height">The height in pixels of the remote desktop.</param>
+        private Framebuffer(int width, int height)
 		{
-			this.width = width;
-			this.height = height;
-			
-			// Cache the total size of the pixel array and initialize
-			pixelCount = width * height;
+		    Width = width;
+			Height = height;
+
+            // Cache the total size of the pixel array and initialize
+            // The total number of pixels (w x h) assigned in SetSize()
+            var pixelCount = width * height;
 			pixels = new int[pixelCount];
 		}
 
@@ -75,151 +63,72 @@ namespace VncSharp
 		/// <summary>
 		/// The Width of the Framebuffer, measured in Pixels.
 		/// </summary>
-		public int Width {
-			get {
-				return width;
-			}
-		}
+		public int Width { get; }
 
-		/// <summary>
+	    /// <summary>
 		/// The Height of the Framebuffer, measured in Pixels.
 		/// </summary>
-		public int Height {
-			get {
-				return height;
-			}
-		}
+		public int Height { get; }
 
-		/// <summary>
+	    /// <summary>
 		/// Gets a Rectangle object constructed out of the Width and Height for the Framebuffer.  Used as a convenience in other classes.
 		/// </summary>
-		public Rectangle Rectangle {
-			get {
-				return new Rectangle(0, 0, width, height);
-			}
-		}
+		public Rectangle Rectangle
+	    {
+	        get { return new Rectangle(0, 0, Width, Height); }
+	    }
 
-		/// <summary>
-		/// The number of Bits Per Pixel for the Framebuffer--one of 8, 24, or 32.
+	    /// <summary>
+		/// The number of Bits Per Pixel for the Framebuffer--one of 8, 16, or 32.
 		/// </summary>
-		public int BitsPerPixel {
-			get {
-				return bpp;
-			}
-			set {
-				bpp = value;
-			}
-		}
+		public int BitsPerPixel { get; private set; }
 
-		/// <summary>
+	    /// <summary>
 		/// The Colour Depth of the Framebuffer.
 		/// </summary>
-		public int Depth {
-			get {
-				return depth;
-			}
-			set {
-				depth = value;
-			}
-		}
+	    private int Depth { get; set; }
 
-		/// <summary>
+	    /// <summary>
 		/// Indicates whether the remote host uses Big- or Little-Endian order when sending multi-byte values.
 		/// </summary>
-		public bool BigEndian {
-			get {
-				return bigEndian;
-			}
-			set {
-				bigEndian = value;
-			}
-		}
+	    private bool BigEndian { get; set; }
 
-		/// <summary>
+	    /// <summary>
 		/// Indicates whether the remote host supports True Colour.
 		/// </summary>
-		public bool TrueColour {
-			get {
-				return trueColour;
-			}
-			set {
-				trueColour = value;
-			}
-		}
+	    private bool TrueColour { get; set; }
 
-		/// <summary>
+	    /// <summary>
 		/// The maximum value for Red in a pixel's colour value.
 		/// </summary>
-		public int RedMax {
-			get {
-				return redMax;
-			}
-			set {
-				redMax = value;
-			}
-		}
+		public int RedMax { get; private set; }
 
-		/// <summary>
+	    /// <summary>
 		/// The maximum value for Green in a pixel's colour value.
 		/// </summary>
-		public int GreenMax {
-			get {
-				return greenMax;
-			}
-			set {
-				greenMax = value;
-			}
-		}
+		public int GreenMax { get; private set; }
 
-		/// <summary>
+	    /// <summary>
 		/// The maximum value for Blue in a pixel's colour value.
 		/// </summary>
-		public int BlueMax {
-			get {
-				return blueMax;
-			}
-			set {
-				blueMax = value;
-			}
-		}
+		public int BlueMax { get; private set; }
 
-		/// <summary>
+	    /// <summary>
 		/// The number of bits to shift pixel values in order to obtain Red values.
 		/// </summary>
-		public int RedShift {
-			get {
-				return redShift;
-			}
-			set {
-				redShift = value;
-			}
-		}
+		public int RedShift { get; private set; }
 
-		/// <summary>
+	    /// <summary>
 		/// The number of bits to shift pixel values in order to obtain Green values.
 		/// </summary>
-		public int GreenShift {
-			get {
-				return greenShift;
-			}
-			set {
-				greenShift = value;
-			}
-		}
+		public int GreenShift { get; private set; }
 
-		/// <summary>
+	    /// <summary>
 		/// The number of bits to shift pixel values in order to obtain Blue values.
 		/// </summary>
-		public int BlueShift {
-			get {
-				return blueShift;
-			}
-			set {
-				blueShift = value;
-			}
-		}
+		public int BlueShift { get; private set; }
 
-		/// <summary>
+	    /// <summary>
 		/// The name of the remote destkop, if any.  Must be non-null.
 		/// </summary>
 		/// <exception cref="ArgumentNullException">Thrown if a null string is used when setting DesktopName.</exception>
@@ -229,7 +138,7 @@ namespace VncSharp
 			}
 			set {
 				if (value == null)
-					throw new ArgumentNullException("DesktopName");
+					throw new ArgumentNullException($"DesktopName");
 				name = value;
 			}
 		}
@@ -240,51 +149,122 @@ namespace VncSharp
 		/// <returns>A byte array of 16 bytes containing the properties of the framebuffer in a format ready for transmission to the VNC server.</returns>
 		public byte[] ToPixelFormat()
 		{
-			byte[] b = new byte[16];
+			var b = new byte[16];
 			
-			b[0]  = (byte) bpp;
-			b[1]  = (byte) depth;
-			b[2]  = (byte) (bigEndian ? 1 : 0);
-			b[3]  = (byte) (trueColour ? 1 : 0);
-			b[4]  = (byte) ((redMax >> 8) & 0xff);
-			b[5]  = (byte) (redMax & 0xff);
-			b[6]  = (byte) ((greenMax >> 8) & 0xff);
-			b[7]  = (byte) (greenMax & 0xff);
-			b[8]  = (byte) ((blueMax >> 8) & 0xff);
-			b[9]  = (byte) (blueMax & 0xff);
-			b[10] = (byte) redShift;
-			b[11] = (byte) greenShift;
-			b[12] = (byte) blueShift;
+			b[0]  = (byte) BitsPerPixel;
+			b[1]  = (byte) Depth;
+			b[2]  = (byte) (BigEndian ? 1 : 0);
+			b[3]  = (byte) (TrueColour ? 1 : 0);
+			b[4]  = (byte) ((RedMax >> 8) & 0xff);
+			b[5]  = (byte) (RedMax & 0xff);
+			b[6]  = (byte) ((GreenMax >> 8) & 0xff);
+			b[7]  = (byte) (GreenMax & 0xff);
+			b[8]  = (byte) ((BlueMax >> 8) & 0xff);
+			b[9]  = (byte) (BlueMax & 0xff);
+			b[10] = (byte) RedShift;
+			b[11] = (byte) GreenShift;
+			b[12] = (byte) BlueShift;
 			// plus 3 bytes padding = 16 bytes
 			
 			return b;
 		}
-		
-		/// <summary>
-		/// Given the dimensions and 16-byte PIXEL_FORMAT record from the VNC Host, deserialize this into a Framebuffer object.
-		/// </summary>
-		/// <param name="b">The 16-byte PIXEL_FORMAT record.</param>
-		/// <param name="width">The width in pixels of the remote desktop.</param>
-		/// <param name="height">The height in pixles of the remote desktop.</param>
-		/// <returns>Returns a Framebuffer object matching the specification of b[].</returns>
-		public static Framebuffer FromPixelFormat(byte[] b, int width, int height)
-		{
-			if (b.Length != 16)
-				throw new ArgumentException("Length of b must be 16 bytes.");
-			
-			Framebuffer buffer = new Framebuffer(width, height);
-			
-			buffer.BitsPerPixel	= (int) b[0];
-			buffer.Depth		= (int) b[1];
-			buffer.BigEndian	= (b[2] != 0);
-			buffer.TrueColour	= (b[3] != 0);
-			buffer.RedMax		= (int) (b[5] | b[4] << 8);
-			buffer.GreenMax		= (int) (b[7] | b[6] << 8);
-			buffer.BlueMax		= (int) (b[9] | b[8] << 8);
-			buffer.RedShift		= (int) b[10];
-			buffer.GreenShift	= (int) b[11];
-			buffer.BlueShift	= (int) b[12];
-			// Last 3 bytes are padding, ignore									
+
+        /// <summary>
+        /// Given the dimensions and 16-byte PIXEL_FORMAT record from the VNC Host, deserialize this into a Framebuffer object.
+        /// </summary>
+        /// <param name="b">The 16-byte PIXEL_FORMAT record.</param>
+        /// <param name="width">The width in pixels of the remote desktop.</param>
+        /// <param name="height">The height in pixles of the remote desktop.</param>
+		/// <param name="bitsPerPixel">The number of Bits Per Pixel for the Framebuffer--one of 8, 16, or 32.</param>
+		/// <param name="depth">The Colour Depth of the Framebuffer--one of 3, 6, 8 or 16.</param>
+        /// <returns>Returns a Framebuffer object matching the specification of b[].</returns>
+        public static Framebuffer FromPixelFormat(byte[] b, int width, int height, int bitsPerPixel, int depth)
+        {
+            if (b.Length != 16)
+                throw new ArgumentException("Length of b must be 16 bytes.");
+
+            var buffer = new Framebuffer(width, height);
+
+            if ((bitsPerPixel == 16) && (depth == 16))
+            {
+                buffer.BitsPerPixel     = 16;
+                buffer.Depth            = 16;
+                buffer.BigEndian        = b[2] != 0;
+                buffer.TrueColour       = false;
+                buffer.RedMax           = 31;
+                buffer.GreenMax         = 63;
+                buffer.BlueMax          = 31;
+                buffer.RedShift         = 11;
+                buffer.GreenShift       = 5;
+                buffer.BlueShift        = 0;
+            }
+            else if ((bitsPerPixel) == 16 && (depth == 8))
+            {
+                buffer.BitsPerPixel     = 16;
+                buffer.Depth            = 8;
+                buffer.BigEndian        = b[2] != 0;
+                buffer.TrueColour       = false;
+                buffer.RedMax           = 31;
+                buffer.GreenMax         = 63;
+                buffer.BlueMax          = 31;
+                buffer.RedShift         = 11;
+                buffer.GreenShift       = 5;
+                buffer.BlueShift        = 0;
+            }
+            else if ((bitsPerPixel) == 8 && (depth == 8))
+            {
+                buffer.BitsPerPixel     = 8;
+                buffer.BigEndian        = b[2] != 0;
+                buffer.TrueColour       = false;
+                buffer.Depth            = 8;
+                buffer.RedMax           = 7;
+                buffer.GreenMax         = 7;
+                buffer.BlueMax          = 3;
+                buffer.RedShift         = 0;
+                buffer.GreenShift       = 3;
+                buffer.BlueShift        = 6;
+            }
+            else if ((bitsPerPixel) == 8 && (depth == 6))
+            {
+                buffer.BitsPerPixel     = 8;
+                buffer.Depth            = 6;
+                buffer.BigEndian        = b[2] != 0;
+                buffer.TrueColour       = false;
+                buffer.RedMax           = 3;
+                buffer.GreenMax         = 3;
+                buffer.BlueMax          = 3;
+                buffer.RedShift         = 4;
+                buffer.GreenShift       = 2;
+                buffer.BlueShift        = 0;
+            }
+            else if ((bitsPerPixel == 8) && (depth == 3))
+            {
+                buffer.BitsPerPixel     = 8;
+                buffer.Depth            = 3;
+                buffer.BigEndian        = b[2] != 0;
+                buffer.TrueColour       = false;
+                buffer.RedMax           = 1;
+                buffer.GreenMax         = 1;
+                buffer.BlueMax          = 1;
+                buffer.RedShift         = 2;
+                buffer.GreenShift       = 1;
+                buffer.BlueShift        = 0;
+            }
+            else
+            {
+                buffer.BitsPerPixel     = b[0];
+                buffer.Depth            = b[1];
+                buffer.BigEndian        = b[2] != 0;
+                buffer.TrueColour       = b[3] != 0;
+                buffer.RedMax           = b[5] | b[4] << 8;
+                buffer.GreenMax         = b[7] | b[6] << 8;
+                buffer.BlueMax          = b[9] | b[8] << 8;
+                buffer.RedShift         = b[10];
+                buffer.GreenShift       = b[11];
+                buffer.BlueShift        = b[12];
+            }
+
+		    // Last 3 bytes are padding, ignore									
 
 			return buffer;
 		}
